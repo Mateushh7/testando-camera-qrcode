@@ -28,22 +28,20 @@
             color: #555;
         }
 
-        /* Container para o leitor e o canvas de sobreposição */
         #leitor-container {
             position: relative;
             width: 100%;
             max-width: 500px;
             margin-bottom: 20px;
             border-radius: 8px;
-            overflow: hidden; /* Garante que o canvas não ultrapasse as bordas arredondadas */
+            overflow: hidden;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            background-color: #000; /* Fundo escuro para o container */
         }
 
-        /* Onde a biblioteca vai renderizar o vídeo */
         #leitor-qr {
             width: 100%;
             border: none;
-            /* Garante que o vídeo preencha o container sem distorção */
             display: flex; 
         }
         
@@ -52,14 +50,13 @@
             height: auto !important;
         }
 
-        /* Canvas para desenhar sobre o vídeo */
         #canvas-sobreposicao {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none; /* Permite que cliques "atravessem" o canvas e cheguem ao vídeo, se necessário */
+            pointer-events: none;
         }
 
         #resultados {
@@ -101,7 +98,6 @@
     <h1>Leitor de QR Code com Destaque</h1>
     <p>Aponte a câmera para um QR code. Códigos já lidos serão destacados em vermelho.</p>
     
-    <!-- O container agora agrupa o leitor e o canvas -->
     <div id="leitor-container">
         <div id="leitor-qr"></div>
         <canvas id="canvas-sobreposicao"></canvas>
@@ -114,57 +110,42 @@
         </ul>
     </div>
 
-    <!-- Inclui a biblioteca externa que faz a leitura do QR code -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', (event) => {
-            // Usamos um Map para armazenar os dados de cada QR code lido
             const scannedData = new Map();
             const listaResultados = document.getElementById('lista-qr-codes');
             const canvas = document.getElementById('canvas-sobreposicao');
             const ctx = canvas.getContext('2d');
             let videoElement = null;
 
-            // Função para desenhar os destaques no canvas
             function drawHighlights() {
-                // Encontra o elemento de vídeo, se ainda não o tivermos
                 if (!videoElement) {
                     videoElement = document.querySelector('#leitor-qr video');
                 }
 
-                // Só desenha se o vídeo estiver pronto e visível
                 if (videoElement && videoElement.readyState > 1) {
-                    // Obtém o tamanho real que o vídeo está sendo exibido na tela
                     const displayWidth = videoElement.clientWidth;
                     const displayHeight = videoElement.clientHeight;
-
-                    // Obtém a resolução real do stream de vídeo
                     const videoWidth = videoElement.videoWidth;
                     const videoHeight = videoElement.videoHeight;
 
-                    // Ajusta o tamanho do canvas para corresponder ao tamanho de exibição do vídeo
-                    // Isso é crucial para o alinhamento correto
                     if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
                         canvas.width = displayWidth;
                         canvas.height = displayHeight;
                     }
 
-                    // Calcula os fatores de escala
                     const scaleX = displayWidth / videoWidth;
                     const scaleY = displayHeight / videoHeight;
 
-                    // Limpa o canvas antes de desenhar o próximo quadro
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Vermelho com 50% de opacidade
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
 
-                    // Itera sobre todos os códigos já lidos
-                    scannedData.forEach((data, text) => {
-                        // Verifica se o código foi visto nos últimos 250ms. Se não, o destaque some.
+                    scannedData.forEach((data) => {
                         if (Date.now() - data.lastSeen < 250) {
                             const points = data.points;
                             if (points && points.length === 4) {
-                                // Desenha o polígono sobre o QR code, aplicando a escala
                                 ctx.beginPath();
                                 ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
                                 ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY);
@@ -176,43 +157,42 @@
                         }
                     });
                 }
-
-                // Chama a si mesma para o próximo quadro de animação
                 requestAnimationFrame(drawHighlights);
             }
 
-            // Função chamada quando um QR code é lido com sucesso
             function onScanSuccess(decodedText, decodedResult) {
+                // Acessa os pontos do QR Code a partir da estrutura correta
+                const points = decodedResult.result?.decodedText?.resultPoints;
+                if (!points) return; // Se não houver pontos, não faz nada
+
                 const isNew = !scannedData.has(decodedText);
 
-                // Se for um código novo, adiciona à lista e dá um feedback
                 if (isNew) {
                     console.log(`Novo QR Code: ${decodedText}`);
                     if (navigator.vibrate) {
-                        navigator.vibrate(100); // Vibra o celular (se suportado)
+                        navigator.vibrate(100);
                     }
                     const listItem = document.createElement('li');
                     listItem.textContent = decodedText;
-                    listaResultados.prepend(listItem); // Adiciona no topo da lista
+                    listaResultados.prepend(listItem);
                 }
 
-                // Sempre atualiza as coordenadas e o tempo da última vez que o código foi visto
-                // Isso garante que o destaque siga o QR code em tempo real
                 scannedData.set(decodedText, {
-                    points: decodedResult.result.points,
+                    points: points,
                     lastSeen: Date.now()
                 });
             }
 
             function onScanFailure(error) {
-                // Não é necessário fazer nada aqui. Essa função é chamada a cada quadro que não encontra um QR code.
+                // Silencia os erros para não poluir o console
             }
 
-            // Cria a instância do leitor de QR code
-            const html5Qrcode = new Html5Qrcode("leitor-qr");
+            // **CORREÇÃO PRINCIPAL:** O segundo argumento `true` (ou { verbose: true })
+            // é essencial para que a biblioteca retorne os detalhes do QR code, incluindo as coordenadas.
+            const html5Qrcode = new Html5Qrcode("leitor-qr", true); 
             
             const config = {
-                fps: 15, // Quadros por segundo para escanear
+                fps: 10,
                 qrbox: (viewfinderWidth, viewfinderHeight) => {
                     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
                     const qrboxSize = Math.floor(minEdge * 0.8);
@@ -222,15 +202,13 @@
                 supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
             };
             
-            // Inicia o scanner
             html5Qrcode.start(
-                { facingMode: "environment" }, // Prioriza a câmera traseira
+                { facingMode: "environment" },
                 config,
                 onScanSuccess,
                 onScanFailure
             ).then(() => {
                 console.log("Leitor de QR Code iniciado com sucesso.");
-                // Inicia o loop para desenhar os destaques sobre o vídeo
                 requestAnimationFrame(drawHighlights);
             }).catch(err => {
                 console.error("Falha ao iniciar o leitor de QR code.", err);
