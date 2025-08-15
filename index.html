@@ -112,108 +112,108 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', (event) => {
-            // Usamos um Map para armazenar o texto do QR code e suas coordenadas
-            const qrCodesLidos = new Map();
+            // Usamos um Map para armazenar os dados de cada QR code lido
+            const scannedData = new Map();
             const listaResultados = document.getElementById('lista-qr-codes');
             const canvas = document.getElementById('canvas-sobreposicao');
             const ctx = canvas.getContext('2d');
             let videoElement = null;
 
             // Função para desenhar os destaques no canvas
-            function desenharDestaques() {
+            function drawHighlights() {
+                // Encontra o elemento de vídeo, se ainda não o tivermos
                 if (!videoElement) {
-                    // Tenta encontrar o elemento de vídeo criado pela biblioteca
                     videoElement = document.querySelector('#leitor-qr video');
-                    if (!videoElement) {
-                        requestAnimationFrame(desenharDestaques); // Tenta de novo no próximo frame
-                        return;
-                    }
                 }
-                
-                // Ajusta o tamanho do canvas para corresponder ao tamanho real do vídeo
-                canvas.width = videoElement.videoWidth;
-                canvas.height = videoElement.videoHeight;
-                
-                // Limpa o canvas antes de desenhar
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // Define o estilo do destaque
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Vermelho semi-transparente
-
-                // Desenha um polígono para cada QR code lido
-                qrCodesLidos.forEach((pontos, texto) => {
-                    if (pontos && pontos.length === 4) {
-                        ctx.beginPath();
-                        ctx.moveTo(pontos[0].x, pontos[0].y);
-                        for (let i = 1; i < pontos.length; i++) {
-                            ctx.lineTo(pontos[i].x, pontos[i].y);
-                        }
-                        ctx.closePath();
-                        ctx.fill();
+                // Só desenha se o vídeo estiver pronto
+                if (videoElement && videoElement.readyState > 1) {
+                    // Ajusta o tamanho do canvas para corresponder exatamente à resolução do vídeo
+                    if (canvas.width !== videoElement.videoWidth || canvas.height !== videoElement.videoHeight) {
+                        canvas.width = videoElement.videoWidth;
+                        canvas.height = videoElement.videoHeight;
                     }
-                });
 
-                // Continua o loop de animação
-                requestAnimationFrame(desenharDestaques);
+                    // Limpa o canvas a cada quadro
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    // Define o estilo do destaque
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.4)'; // Vermelho com 40% de opacidade
+
+                    // Itera sobre todos os códigos já lidos
+                    scannedData.forEach((data, text) => {
+                        // Verifica se o código foi visto nos últimos 200ms
+                        if (Date.now() - data.lastSeen < 200) {
+                            const points = data.points;
+                            if (points && points.length === 4) {
+                                // Desenha o polígono sobre o QR code
+                                ctx.beginPath();
+                                ctx.moveTo(points[0].x, points[0].y);
+                                ctx.lineTo(points[1].x, points[1].y);
+                                ctx.lineTo(points[2].x, points[2].y);
+                                ctx.lineTo(points[3].x, points[3].y);
+                                ctx.closePath();
+                                ctx.fill();
+                            }
+                        }
+                    });
+                }
+
+                // Continua o loop de animação para manter o desenho atualizado
+                requestAnimationFrame(drawHighlights);
             }
 
-            // Função que será chamada quando um QR code for lido com sucesso
+            // Função chamada quando um QR code é lido com sucesso
             function onScanSuccess(decodedText, decodedResult) {
-                // Verifica se o QR code é novo
-                const isNovo = !qrCodesLidos.has(decodedText);
+                const isNew = !scannedData.has(decodedText);
 
-                // Atualiza o mapa com as coordenadas mais recentes do QR code
-                // Isso garante que o destaque se mova junto com o QR code na tela
-                if (decodedResult.result && decodedResult.result.points) {
-                    qrCodesLidos.set(decodedText, decodedResult.result.points);
-                }
-
-                // Se for um QR code novo, adiciona à lista e dá um feedback
-                if (isNovo) {
-                    console.log(`Novo QR Code lido: ${decodedText}`);
-                    
-                    // Feedback tátil (se o dispositivo suportar)
+                // Se for um código novo, adiciona à lista e dá um feedback
+                if (isNew) {
+                    console.log(`Novo QR Code: ${decodedText}`);
                     if (navigator.vibrate) {
-                        navigator.vibrate(100);
+                        navigator.vibrate(100); // Vibra o celular (se suportado)
                     }
-
-                    // Adiciona o item na lista da interface
-                    const novoItem = document.createElement('li');
-                    novoItem.textContent = decodedText;
-                    listaResultados.prepend(novoItem); // Adiciona no início para ver os mais recentes primeiro
+                    const listItem = document.createElement('li');
+                    listItem.textContent = decodedText;
+                    listaResultados.prepend(listItem); // Adiciona no topo da lista
                 }
+
+                // Atualiza os dados do QR code (coordenadas e quando foi visto pela última vez)
+                // Isso acontece para códigos novos e para os já lidos, garantindo que o destaque siga o QR code
+                scannedData.set(decodedText, {
+                    points: decodedResult.result.points,
+                    lastSeen: Date.now()
+                });
             }
 
             function onScanFailure(error) {
-                // Não faz nada em caso de falha para não poluir o console
+                // Não é necessário fazer nada aqui. Essa função é chamada a cada quadro que não encontra um QR code.
             }
-            
+
             // Cria a instância do leitor de QR code
-            const html5QrcodeScanner = new Html5Qrcode("leitor-qr", { 
-                // Ativa o modo verboso para obter mais detalhes, incluindo as coordenadas
-                verbose: true 
-            });
+            const html5Qrcode = new Html5Qrcode("leitor-qr");
             
             const config = {
-                fps: 30, // Quadros por segundo
+                fps: 20, // Quadros por segundo para escanear
                 qrbox: (viewfinderWidth, viewfinderHeight) => {
                     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                    const qrboxSize = Math.floor(minEdge * 0.7);
+                    const qrboxSize = Math.floor(minEdge * 0.8); // Aumenta um pouco a área de scan
                     return { width: qrboxSize, height: qrboxSize };
                 },
                 rememberLastUsedCamera: true,
                 supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
             };
             
-            // Inicia o scanner e, em caso de sucesso, inicia o loop de desenho
-            html5QrcodeScanner.start(
-                { facingMode: "environment" },
+            // Inicia o scanner
+            html5Qrcode.start(
+                { facingMode: "environment" }, // Prioriza a câmera traseira
                 config,
                 onScanSuccess,
                 onScanFailure
             ).then(() => {
+                console.log("Leitor de QR Code iniciado com sucesso.");
                 // Inicia o loop para desenhar os destaques sobre o vídeo
-                requestAnimationFrame(desenharDestaques);
+                requestAnimationFrame(drawHighlights);
             }).catch(err => {
                 console.error("Falha ao iniciar o leitor de QR code.", err);
                 alert("Erro ao iniciar a câmera. Por favor, conceda a permissão de acesso à câmera e recarregue a página.");
