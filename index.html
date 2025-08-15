@@ -43,6 +43,13 @@
         #leitor-qr {
             width: 100%;
             border: none;
+            /* Garante que o vídeo preencha o container sem distorção */
+            display: flex; 
+        }
+        
+        #leitor-qr video {
+            width: 100% !important;
+            height: auto !important;
         }
 
         /* Canvas para desenhar sobre o vídeo */
@@ -126,32 +133,43 @@
                     videoElement = document.querySelector('#leitor-qr video');
                 }
 
-                // Só desenha se o vídeo estiver pronto
+                // Só desenha se o vídeo estiver pronto e visível
                 if (videoElement && videoElement.readyState > 1) {
-                    // Ajusta o tamanho do canvas para corresponder exatamente à resolução do vídeo
-                    if (canvas.width !== videoElement.videoWidth || canvas.height !== videoElement.videoHeight) {
-                        canvas.width = videoElement.videoWidth;
-                        canvas.height = videoElement.videoHeight;
+                    // Obtém o tamanho real que o vídeo está sendo exibido na tela
+                    const displayWidth = videoElement.clientWidth;
+                    const displayHeight = videoElement.clientHeight;
+
+                    // Obtém a resolução real do stream de vídeo
+                    const videoWidth = videoElement.videoWidth;
+                    const videoHeight = videoElement.videoHeight;
+
+                    // Ajusta o tamanho do canvas para corresponder ao tamanho de exibição do vídeo
+                    // Isso é crucial para o alinhamento correto
+                    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                        canvas.width = displayWidth;
+                        canvas.height = displayHeight;
                     }
 
-                    // Limpa o canvas a cada quadro
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    // Calcula os fatores de escala
+                    const scaleX = displayWidth / videoWidth;
+                    const scaleY = displayHeight / videoHeight;
 
-                    // Define o estilo do destaque
-                    ctx.fillStyle = 'rgba(255, 0, 0, 0.4)'; // Vermelho com 40% de opacidade
+                    // Limpa o canvas antes de desenhar o próximo quadro
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Vermelho com 50% de opacidade
 
                     // Itera sobre todos os códigos já lidos
                     scannedData.forEach((data, text) => {
-                        // Verifica se o código foi visto nos últimos 200ms
-                        if (Date.now() - data.lastSeen < 200) {
+                        // Verifica se o código foi visto nos últimos 250ms. Se não, o destaque some.
+                        if (Date.now() - data.lastSeen < 250) {
                             const points = data.points;
                             if (points && points.length === 4) {
-                                // Desenha o polígono sobre o QR code
+                                // Desenha o polígono sobre o QR code, aplicando a escala
                                 ctx.beginPath();
-                                ctx.moveTo(points[0].x, points[0].y);
-                                ctx.lineTo(points[1].x, points[1].y);
-                                ctx.lineTo(points[2].x, points[2].y);
-                                ctx.lineTo(points[3].x, points[3].y);
+                                ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
+                                ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY);
+                                ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY);
+                                ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY);
                                 ctx.closePath();
                                 ctx.fill();
                             }
@@ -159,7 +177,7 @@
                     });
                 }
 
-                // Continua o loop de animação para manter o desenho atualizado
+                // Chama a si mesma para o próximo quadro de animação
                 requestAnimationFrame(drawHighlights);
             }
 
@@ -178,8 +196,8 @@
                     listaResultados.prepend(listItem); // Adiciona no topo da lista
                 }
 
-                // Atualiza os dados do QR code (coordenadas e quando foi visto pela última vez)
-                // Isso acontece para códigos novos e para os já lidos, garantindo que o destaque siga o QR code
+                // Sempre atualiza as coordenadas e o tempo da última vez que o código foi visto
+                // Isso garante que o destaque siga o QR code em tempo real
                 scannedData.set(decodedText, {
                     points: decodedResult.result.points,
                     lastSeen: Date.now()
@@ -194,10 +212,10 @@
             const html5Qrcode = new Html5Qrcode("leitor-qr");
             
             const config = {
-                fps: 20, // Quadros por segundo para escanear
+                fps: 15, // Quadros por segundo para escanear
                 qrbox: (viewfinderWidth, viewfinderHeight) => {
                     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                    const qrboxSize = Math.floor(minEdge * 0.8); // Aumenta um pouco a área de scan
+                    const qrboxSize = Math.floor(minEdge * 0.8);
                     return { width: qrboxSize, height: qrboxSize };
                 },
                 rememberLastUsedCamera: true,
