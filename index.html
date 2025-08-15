@@ -161,8 +161,10 @@
         </ul>
     </div>
 
-    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <!-- A biblioteca é carregada primeiro -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
+    <!-- Nosso script é executado depois que o HTML é totalmente analisado -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const scannedData = new Map();
@@ -184,32 +186,27 @@
                     const videoWidth = videoElement.videoWidth;
                     const videoHeight = videoElement.videoHeight;
 
-                    // Garante que o canvas tenha o mesmo tamanho que o vídeo está sendo exibido
                     if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
                         canvas.width = displayWidth;
                         canvas.height = displayHeight;
                     }
 
-                    // Evita divisão por zero se o vídeo ainda não tiver dimensões
                     if (videoWidth === 0 || videoHeight === 0) {
                         animationFrameId = requestAnimationFrame(drawHighlights);
                         return;
                     }
 
-                    // Calcula a proporção para converter as coordenadas do vídeo para as coordenadas da tela
                     const scaleX = displayWidth / videoWidth;
                     const scaleY = displayHeight / videoHeight;
 
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     
                     scannedData.forEach((data) => {
-                        // Se o QR code foi visto recentemente, desenha o destaque
                         if (Date.now() - data.lastSeen < 300) { 
                             const points = data.points;
                             if (points && points.length === 4) {
                                 ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Vermelho
                                 ctx.beginPath();
-                                // Mapeia cada ponto do QR code para a posição correta na tela
                                 ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
                                 for (let i = 1; i < points.length; i++) {
                                     ctx.lineTo(points[i].x * scaleX, points[i].y * scaleY);
@@ -224,10 +221,8 @@
             }
 
             function onScanSuccess(decodedText, decodedResult) {
-                // Acessa os pontos do QR Code da estrutura correta do resultado
                 const points = decodedResult.result.points;
 
-                // Adiciona à lista se for um código novo
                 if (!scannedData.has(decodedText)) {
                     console.log(`Novo QR Code: ${decodedText}`);
                     if (navigator.vibrate) navigator.vibrate(100);
@@ -237,19 +232,19 @@
                     listaResultadosEl.prepend(listItem);
                 }
 
-                // Atualiza os dados do QR code (coordenadas e tempo) para o destaque visual
-                scannedData.set(decodedText, {
-                    points: points,
-                    lastSeen: Date.now()
-                });
+                if (points) {
+                    scannedData.set(decodedText, {
+                        points: points,
+                        lastSeen: Date.now()
+                    });
+                }
             }
 
             function onScanFailure(error) {
-                // Não faz nada em caso de falha para manter o console limpo
+                // Silencia os erros para não poluir o console
             }
 
-            // Instancia o leitor de QR code
-            const html5Qrcode = new Html5Qrcode("leitor-qr"); 
+            const html5Qrcode = new Html5Qrcode("leitor-qr", { verbose: true }); 
             
             const config = {
                 fps: 10,
@@ -258,12 +253,6 @@
                     const qrboxSize = Math.floor(minEdge * 0.8);
                     return { width: qrboxSize, height: qrboxSize };
                 },
-                // Pede um formato de vídeo que tende a ser mais compatível
-                videoConstraints: {
-                    facingMode: "environment",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
             };
 
             startButton.addEventListener('click', () => {
