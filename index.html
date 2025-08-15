@@ -187,7 +187,7 @@
                     ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
 
                     scannedData.forEach((data) => {
-                        if (Date.now() - data.lastSeen < 300) { // Aumenta um pouco o tempo de persistência
+                        if (Date.now() - data.lastSeen < 300) { 
                             const points = data.points;
                             if (points && points.length === 4) {
                                 ctx.beginPath();
@@ -205,14 +205,11 @@
             }
 
             function onScanSuccess(decodedText, decodedResult) {
-                // **CORREÇÃO PRINCIPAL AQUI**
-                // Acessa os pontos do QR Code a partir da estrutura correta do objeto `decodedResult`.
-                const points = decodedResult.result.points;
-                if (!points) return;
+                // --- LÓGICA CORRIGIDA ---
 
-                const isNew = !scannedData.has(decodedText);
-
-                if (isNew) {
+                // 1. Adicionar à lista se for novo
+                // Esta verificação acontece primeiro para garantir que a lista seja sempre atualizada.
+                if (!scannedData.has(decodedText)) {
                     console.log(`Novo QR Code: ${decodedText}`);
                     if (navigator.vibrate) {
                         navigator.vibrate(100);
@@ -222,8 +219,17 @@
                     listaResultadosEl.prepend(listItem);
                 }
 
+                // 2. Atualizar os dados para o destaque visual
+                // Usamos optional chaining (?.) para evitar erros se 'result' ou 'points' não existirem.
+                const points = decodedResult?.result?.points;
+                
+                // Obtemos os dados antigos para não perder as coordenadas se a detecção atual falhar em encontrá-las
+                const oldData = scannedData.get(decodedText) || {};
+
                 scannedData.set(decodedText, {
-                    points: points,
+                    // Usa os novos pontos se existirem, senão mantém os antigos.
+                    points: points || oldData.points, 
+                    // Sempre atualiza o tempo da última vez que foi visto.
                     lastSeen: Date.now()
                 });
             }
@@ -232,7 +238,8 @@
                 // Silencia os erros para não poluir o console
             }
 
-            const html5Qrcode = new Html5Qrcode("leitor-qr", { verbose: true });
+            // A flag 'verbose: true' é crucial para a biblioteca retornar as coordenadas do QR code.
+            const html5Qrcode = new Html5Qrcode("leitor-qr", { verbose: true }); 
             
             const config = {
                 fps: 15,
@@ -260,7 +267,6 @@
                     startButton.style.display = 'none';
                     statusMessageEl.style.display = 'none';
                     
-                    // Inicia o loop de desenho
                     if (animationFrameId) {
                         cancelAnimationFrame(animationFrameId);
                     }
