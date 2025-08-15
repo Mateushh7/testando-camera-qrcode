@@ -36,13 +36,17 @@
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            background-color: #000; /* Fundo escuro para o container */
+            background-color: #000;
         }
 
         #leitor-qr {
             width: 100%;
             border: none;
-            display: flex; 
+            display: flex;
+            background-color: #222;
+            min-height: 300px;
+            align-items: center;
+            justify-content: center;
         }
         
         #leitor-qr video {
@@ -57,6 +61,35 @@
             width: 100%;
             height: 100%;
             pointer-events: none;
+        }
+
+        #controles {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        #start-scan-button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #start-scan-button:hover {
+            background-color: #0056b3;
+        }
+
+        #status-message {
+            color: #666;
+            font-style: italic;
         }
 
         #resultados {
@@ -98,12 +131,17 @@
     <h1>Leitor de QR Code com Destaque</h1>
     <p>Aponte a câmera para um QR code. Códigos já lidos serão destacados em vermelho.</p>
     
-    <div id="leitor-container">
+    <div id="controles">
+        <button id="start-scan-button">Iniciar Leitura</button>
+        <div id="status-message"></div>
+    </div>
+
+    <div id="leitor-container" style="display: none;">
         <div id="leitor-qr"></div>
         <canvas id="canvas-sobreposicao"></canvas>
     </div>
 
-    <div id="resultados">
+    <div id="resultados" style="display: none;">
         <h2>QR Codes Lidos:</h2>
         <ul id="lista-qr-codes">
             <!-- A lista aparecerá aqui -->
@@ -113,19 +151,20 @@
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
     <script>
-        document.addEventListener('DOMContentLoaded', (event) => {
+        document.addEventListener('DOMContentLoaded', () => {
             const scannedData = new Map();
-            const listaResultados = document.getElementById('lista-qr-codes');
+            const listaResultadosEl = document.getElementById('lista-qr-codes');
             const canvas = document.getElementById('canvas-sobreposicao');
             const ctx = canvas.getContext('2d');
+            const startButton = document.getElementById('start-scan-button');
+            const statusMessageEl = document.getElementById('status-message');
+            const leitorContainerEl = document.getElementById('leitor-container');
+            const resultadosEl = document.getElementById('resultados');
             let videoElement = null;
+            let animationFrameId;
 
             function drawHighlights() {
-                if (!videoElement) {
-                    videoElement = document.querySelector('#leitor-qr video');
-                }
-
-                if (videoElement && videoElement.readyState > 1) {
+                if (videoElement && videoElement.readyState >= 2) {
                     const displayWidth = videoElement.clientWidth;
                     const displayHeight = videoElement.clientHeight;
                     const videoWidth = videoElement.videoWidth;
@@ -136,6 +175,11 @@
                         canvas.height = displayHeight;
                     }
 
+                    if (videoWidth === 0 || videoHeight === 0) {
+                        animationFrameId = requestAnimationFrame(drawHighlights);
+                        return;
+                    }
+
                     const scaleX = displayWidth / videoWidth;
                     const scaleY = displayHeight / videoHeight;
 
@@ -143,27 +187,28 @@
                     ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
 
                     scannedData.forEach((data) => {
-                        if (Date.now() - data.lastSeen < 250) {
+                        if (Date.now() - data.lastSeen < 300) { // Aumenta um pouco o tempo de persistência
                             const points = data.points;
                             if (points && points.length === 4) {
                                 ctx.beginPath();
                                 ctx.moveTo(points[0].x * scaleX, points[0].y * scaleY);
-                                ctx.lineTo(points[1].x * scaleX, points[1].y * scaleY);
-                                ctx.lineTo(points[2].x * scaleX, points[2].y * scaleY);
-                                ctx.lineTo(points[3].x * scaleX, points[3].y * scaleY);
+                                for (let i = 1; i < points.length; i++) {
+                                    ctx.lineTo(points[i].x * scaleX, points[i].y * scaleY);
+                                }
                                 ctx.closePath();
                                 ctx.fill();
                             }
                         }
                     });
                 }
-                requestAnimationFrame(drawHighlights);
+                animationFrameId = requestAnimationFrame(drawHighlights);
             }
 
             function onScanSuccess(decodedText, decodedResult) {
-                // Acessa os pontos do QR Code a partir da estrutura correta
-                const points = decodedResult.result?.decodedText?.resultPoints;
-                if (!points) return; // Se não houver pontos, não faz nada
+                // **CORREÇÃO PRINCIPAL AQUI**
+                // Acessa os pontos do QR Code a partir da estrutura correta do objeto `decodedResult`.
+                const points = decodedResult.result.points;
+                if (!points) return;
 
                 const isNew = !scannedData.has(decodedText);
 
@@ -174,7 +219,7 @@
                     }
                     const listItem = document.createElement('li');
                     listItem.textContent = decodedText;
-                    listaResultados.prepend(listItem);
+                    listaResultadosEl.prepend(listItem);
                 }
 
                 scannedData.set(decodedText, {
@@ -187,32 +232,44 @@
                 // Silencia os erros para não poluir o console
             }
 
-            // **CORREÇÃO PRINCIPAL:** O segundo argumento `true` (ou { verbose: true })
-            // é essencial para que a biblioteca retorne os detalhes do QR code, incluindo as coordenadas.
-            const html5Qrcode = new Html5Qrcode("leitor-qr", true); 
+            const html5Qrcode = new Html5Qrcode("leitor-qr", { verbose: true });
             
             const config = {
-                fps: 10,
+                fps: 15,
                 qrbox: (viewfinderWidth, viewfinderHeight) => {
                     const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
                     const qrboxSize = Math.floor(minEdge * 0.8);
                     return { width: qrboxSize, height: qrboxSize };
                 },
-                rememberLastUsedCamera: true,
-                supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
             };
-            
-            html5Qrcode.start(
-                { facingMode: "environment" },
-                config,
-                onScanSuccess,
-                onScanFailure
-            ).then(() => {
-                console.log("Leitor de QR Code iniciado com sucesso.");
-                requestAnimationFrame(drawHighlights);
-            }).catch(err => {
-                console.error("Falha ao iniciar o leitor de QR code.", err);
-                alert("Erro ao iniciar a câmera. Por favor, conceda a permissão de acesso à câmera e recarregue a página.");
+
+            startButton.addEventListener('click', () => {
+                startButton.disabled = true;
+                statusMessageEl.textContent = "A iniciar câmera...";
+
+                html5Qrcode.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess,
+                    onScanFailure
+                ).then(() => {
+                    console.log("Leitor de QR Code iniciado com sucesso.");
+                    videoElement = document.querySelector('#leitor-qr video');
+                    leitorContainerEl.style.display = 'block';
+                    resultadosEl.style.display = 'block';
+                    startButton.style.display = 'none';
+                    statusMessageEl.style.display = 'none';
+                    
+                    // Inicia o loop de desenho
+                    if (animationFrameId) {
+                        cancelAnimationFrame(animationFrameId);
+                    }
+                    drawHighlights();
+                }).catch(err => {
+                    console.error("Falha ao iniciar o leitor de QR code.", err);
+                    statusMessageEl.textContent = "Erro ao iniciar a câmera. Por favor, conceda a permissão e tente novamente.";
+                    startButton.disabled = false;
+                });
             });
         });
     </script>
